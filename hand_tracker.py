@@ -1,5 +1,6 @@
 import cv2
 import mediapipe as mp
+import subprocess
 
 # Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
@@ -12,6 +13,8 @@ mp_draw = mp.solutions.drawing_utils
 
 # Open webcam
 cap = cv2.VideoCapture(0)
+
+gesture_triggered = False
 
 while cap.isOpened():
     success, frame = cap.read()
@@ -26,41 +29,60 @@ while cap.isOpened():
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(rgb)
 
-    # Draw landmarks if a hand is detected
+    # If a hand is detected
     if results.multi_hand_landmarks:
         for hand_landmarks in results.multi_hand_landmarks:
             mp_draw.draw_landmarks(
                 frame, hand_landmarks, mp_hands.HAND_CONNECTIONS
             )
-    
-        # Draw black border (thicker)
-    cv2.putText(
-        frame,
-        "Press ESC to exit",
-        (10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 0, 0),  # black
-        4  # thicker stroke for outline
-    )
 
-    # Draw green text over it (thinner)
-    cv2.putText(
-        frame,
-        "Press ESC to exit",
-        (10, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 255, 0),  # green
-        2  # normal stroke
-    )
+            # Convert landmarks to pixel coordinates
+            landmark_list = []
+            h, w, _ = frame.shape
+            for id, lm in enumerate(hand_landmarks.landmark):
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                landmark_list.append((cx, cy))
 
+            # Gesture detection (fist vs open hand)
+            if landmark_list:
+                fingers_folded = 0
+                finger_tips = [8, 12, 16, 20]  # Tips of index to pinky
+                finger_bases = [6, 10, 14, 18]  # Corresponding base joints
 
+                for tip, base in zip(finger_tips, finger_bases):
+                    if landmark_list[tip][1] > landmark_list[base][1]:
+                        fingers_folded += 1
 
-    # Show the result
+                if fingers_folded == 4:
+                    gesture = "Fist"
+                    if not gesture_triggered:
+                        subprocess.run(["systemctl", "poweroff"])
+                        gesture_triggered = True
+                else:
+                    gesture = "Open Hand"
+                    gesture_triggered = False  # Reset when hand is open
+
+                # Draw gesture label
+                cv2.putText(
+                    frame,
+                    f"Gesture: {gesture}",
+                    (10, 70),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1,
+                    (255, 0, 0),
+                    2
+                )
+
+    # Draw exit message with black border
+    cv2.putText(frame, "Press ESC to exit", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 4)
+    cv2.putText(frame, "Press ESC to exit", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+    # Display the frame
     cv2.imshow("Hand Tracker", frame)
 
-    # Exit on pressing ESC
+    # Exit on ESC key
     if cv2.waitKey(1) & 0xFF == 27:
         break
 
