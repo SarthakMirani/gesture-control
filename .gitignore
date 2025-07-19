@@ -1,0 +1,13 @@
+# Ignore Python virtual environment
+gesture-env/
+
+# Bytecode
+__pycache__/
+*.pyc
+
+# VSCode/IDE config
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
