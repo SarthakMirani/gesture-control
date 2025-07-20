@@ -1,9 +1,9 @@
-# NOTE: Thumbs-up gesture detection has been removed temporarily due to instability.
-# Only the following gestures are currently supported:
+# NOTE: Replaced unstable "Thumbs Up" gesture with "Index Finger Up" for testing.
+# Supported gestures:
 # - Open Hand
 # - Fist
 # - Peace Sign
-# This version is stable and should serve as a reliable base.
+# - Index Finger Up
 
 import cv2
 import mediapipe as mp
@@ -27,44 +27,44 @@ while cap.isOpened():
         print("Ignoring empty camera frame.")
         continue
 
-    # Flip image for natural interaction
     frame = cv2.flip(frame, 1)
-
-    # Convert BGR to RGB
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(rgb)
 
     # Handedness info (Left/Right)
     handedness_label = None
     if results.multi_handedness:
-        for hand_handedness in results.multi_handedness:
-            handedness_label = hand_handedness.classification[0].label  # 'Left' or 'Right'
+        handedness_label = results.multi_handedness[0].classification[0].label
 
-    # If a hand is detected
     gesture = "Unknown"
     if results.multi_hand_landmarks:
         for hand_landmarks in results.multi_hand_landmarks:
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            # Convert landmarks to pixel coordinates
+            # Get landmarks
             landmarks = []
             h, w, _ = frame.shape
             for lm in hand_landmarks.landmark:
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 landmarks.append((cx, cy))
 
-            # Define tip and base indices
+            # Define tip/base indices
             finger_tips = [8, 12, 16, 20]
             finger_bases = [6, 10, 14, 18]
 
-            # Count folded fingers
             fingers_folded = sum(
                 landmarks[tip][1] > landmarks[base][1]
                 for tip, base in zip(finger_tips, finger_bases)
             )
 
-            # Gesture logic (no thumbs up logic here)
+            # Gesture logic
             if (
+                landmarks[8][1] < landmarks[6][1] and  # Index up
+                all(landmarks[tip][1] > landmarks[base][1] for tip, base in zip(finger_tips[1:], finger_bases[1:]))  # Others folded
+            ):
+                gesture = "Index Finger Up"
+
+            elif (
                 landmarks[8][1] < landmarks[6][1] and
                 landmarks[12][1] < landmarks[10][1] and
                 landmarks[16][1] > landmarks[14][1] and
@@ -78,27 +78,21 @@ while cap.isOpened():
             elif fingers_folded == 0:
                 gesture = "Open Hand"
 
-            break  # Only process one hand
+            break
 
-    # Display the gesture if it's new
     if gesture != last_gesture:
         print(f"Gesture: {gesture} → Action: [Pending mapping]")
         last_gesture = gesture
 
-    # Draw gesture label on screen
+    # Draw
     cv2.putText(frame, f"Gesture: {gesture}", (10, 70),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-
-    # UI message with black border and green text
     cv2.putText(frame, "Press ESC to exit", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 4)
     cv2.putText(frame, "Press ESC to exit", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-    # Show frame
     cv2.imshow("Hand Tracker", frame)
 
-    # Exit on ESC
     if cv2.waitKey(1) & 0xFF == 27:
         break
 
