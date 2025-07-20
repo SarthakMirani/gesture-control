@@ -1,76 +1,104 @@
+# NOTE: Thumbs-up gesture detection has been removed temporarily due to instability.
+# Only the following gestures are currently supported:
+# - Open Hand
+# - Fist
+# - Peace Sign
+# This version is stable and should serve as a reliable base.
+
 import cv2
 import mediapipe as mp
 
-# Initialize MediaPipe
+# Initialize MediaPipe Hands
 mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.7)
+hands = mp_hands.Hands(
+    static_image_mode=False,
+    max_num_hands=1,
+    min_detection_confidence=0.7
+)
 mp_draw = mp.solutions.drawing_utils
-
-# Define gesture-action mappings
-gesture_actions = {
-    "Fist": "Shutdown",
-    "Open Hand": "Open Browser",
-    "Peace": "Lock Screen"
-}
 
 # Open webcam
 cap = cv2.VideoCapture(0)
+last_gesture = None  # Remember the last detected gesture
 
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
+        print("Ignoring empty camera frame.")
         continue
 
+    # Flip image for natural interaction
     frame = cv2.flip(frame, 1)
+
+    # Convert BGR to RGB
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     results = hands.process(rgb)
 
-    gesture = None
+    # Handedness info (Left/Right)
+    handedness_label = None
+    if results.multi_handedness:
+        for hand_handedness in results.multi_handedness:
+            handedness_label = hand_handedness.classification[0].label  # 'Left' or 'Right'
 
+    # If a hand is detected
+    gesture = "Unknown"
     if results.multi_hand_landmarks:
         for hand_landmarks in results.multi_hand_landmarks:
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            # Convert landmarks to pixels
+            # Convert landmarks to pixel coordinates
+            landmarks = []
             h, w, _ = frame.shape
-            landmarks = [(int(lm.x * w), int(lm.y * h)) for lm in hand_landmarks.landmark]
+            for lm in hand_landmarks.landmark:
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                landmarks.append((cx, cy))
 
-            # Identify finger states
-            tips = [8, 12, 16, 20]
-            bases = [6, 10, 14, 18]
+            # Define tip and base indices
+            finger_tips = [8, 12, 16, 20]
+            finger_bases = [6, 10, 14, 18]
 
-            fingers_folded = sum(landmarks[tip][1] > landmarks[base][1] for tip, base in zip(tips, bases))
+            # Count folded fingers
+            fingers_folded = sum(
+                landmarks[tip][1] > landmarks[base][1]
+                for tip, base in zip(finger_tips, finger_bases)
+            )
 
-            # Gesture logic
-            if fingers_folded == 4:
-                gesture = "Fist"
-            elif fingers_folded == 0:
-                gesture = "Open Hand"
-            elif (
-                landmarks[8][1] < landmarks[6][1] and  # index up
-                landmarks[12][1] < landmarks[10][1] and  # middle up
-                landmarks[16][1] > landmarks[14][1] and  # ring down
-                landmarks[20][1] > landmarks[18][1]      # pinky down
+            # Gesture logic (no thumbs up logic here)
+            if (
+                landmarks[8][1] < landmarks[6][1] and
+                landmarks[12][1] < landmarks[10][1] and
+                landmarks[16][1] > landmarks[14][1] and
+                landmarks[20][1] > landmarks[18][1]
             ):
                 gesture = "Peace"
 
-            # Show gesture → action
-            if gesture:
-                action = gesture_actions.get(gesture, "Unknown")
-                print(f"Gesture: {gesture} → Action: {action}")
+            elif fingers_folded == 4:
+                gesture = "Fist"
 
-                # Draw on screen
-                cv2.putText(frame, f"{gesture} → {action}", (10, 70),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            elif fingers_folded == 0:
+                gesture = "Open Hand"
 
-    # Instructions
+            break  # Only process one hand
+
+    # Display the gesture if it's new
+    if gesture != last_gesture:
+        print(f"Gesture: {gesture} → Action: [Pending mapping]")
+        last_gesture = gesture
+
+    # Draw gesture label on screen
+    cv2.putText(frame, f"Gesture: {gesture}", (10, 70),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+    # UI message with black border and green text
     cv2.putText(frame, "Press ESC to exit", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 4)
     cv2.putText(frame, "Press ESC to exit", (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-    cv2.imshow("Gesture Mapper", frame)
+    # Show frame
+    cv2.imshow("Hand Tracker", frame)
 
+    # Exit on ESC
     if cv2.waitKey(1) & 0xFF == 27:
         break
 
